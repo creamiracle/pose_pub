@@ -26,13 +26,17 @@ typedef struct map_grid
 
 visualization_msgs::MarkerArray poseMarker;
 visualization_msgs::MarkerArray newPoseMarker;
+visualization_msgs::MarkerArray robotPoseMarker;
+
 nav_msgs::OccupancyGrid map;
 
 std::vector<human> human_list;
 std::vector<human> new_human_list;
+std::vector<geometry_msgs::Pose> robotPose;
 
 int count = 0;
 int count_ = 0;
+int count1 = 0;
 int map_width = 0;
 int map_height = 0;
 float map_resolution = 0.0;
@@ -42,6 +46,28 @@ double gaussian2D(double x, double xc, double y, double yc, double sigma)
 {
     double exponent = (std::pow(x - xc, 2) + std::pow(y - yc, 2)) / (2 * std::pow(sigma, 2));
     return std::exp(-exponent);
+}
+
+//make marker array 
+void makeMarkerArray(double x, double y, int count, double g, double b, visualization_msgs::MarkerArray markerArray)
+{
+    visualization_msgs::Marker aMarker;
+    aMarker.header.frame_id = "/map";
+    aMarker.header.stamp = ros::Time::now();  
+    aMarker.type = aMarker.CUBE;
+    aMarker.pose.position.x = x;
+    aMarker.pose.position.y = y;
+    aMarker.pose.position.z = 0;
+    aMarker.scale.x = 0.05;
+    aMarker.scale.y = 0.05;
+    aMarker.scale.z = 0.05;
+    aMarker.color.a = 1;
+    aMarker.color.g = g;
+    aMarker.color.b = b;
+    aMarker.id = count;
+    aMarker.ns = "sector";
+    count++;
+    markerArray.markers.push_back(aMarker);
 }
 
 //calculate each point's gaussian value.
@@ -92,6 +118,31 @@ void filter(std::vector<human> human_list)
             newPoseMarker.markers.push_back(aMarker);
         }
     }
+
+
+}
+
+void poseCallBack(const geometry_msgs::PoseConstPtr &msg)
+{
+    ROS_INFO("get robot position");
+
+    visualization_msgs::Marker aMarker;
+    aMarker.header.frame_id = "/map";
+    aMarker.header.stamp = ros::Time::now();  
+    aMarker.type = aMarker.CUBE;
+    aMarker.pose.position.x = msg->position.x;
+    aMarker.pose.position.y = msg->position.y;
+    aMarker.pose.position.z = 0;
+    aMarker.scale.x = 0.05;
+    aMarker.scale.y = 0.05;
+    aMarker.scale.z = 0.05;
+    aMarker.color.a = 1;
+    aMarker.color.g = 0;
+    aMarker.color.b = 1;
+    aMarker.id = count1;
+    aMarker.ns = "sector";
+    count1++;
+    robotPoseMarker.markers.push_back(aMarker);
 }
 
 void mapCallBack(const nav_msgs::OccupancyGridConstPtr &msg)
@@ -107,14 +158,16 @@ int main(int argc, char *argv[])
     ros::init(argc, argv, "pose_pub");
     ros::NodeHandle n;
     ros::Rate loop_rate(10);
-    ros::Subscriber path_sub = n.subscribe("/map",1,mapCallBack);
+    ros::Subscriber map_sub = n.subscribe("/map",1,mapCallBack);
+    ros::Subscriber pose_sub = n.subscribe("/robot_pose",1,poseCallBack);
     ros::Publisher pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/human_position", 1);
     ros::Publisher new_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/new_human_position", 1);
+    ros::Publisher robot_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/robot_position", 1);
 
     //read txt file and get the data.
     std::ifstream inf;
     std::string line;
-    inf.open("/home/lin/catkin_ws/src/detect_human/result/position.txt", std::ifstream::in);
+    inf.open("/home/lin/catkin_ws/src/detect_human/result/testposition.txt", std::ifstream::in);
     
     int j = 0;
     size_t comma = 0;
@@ -193,7 +246,7 @@ int main(int argc, char *argv[])
         human_list.push_back(newHuman);
         poseMarker.markers.push_back(aMarker);    
     }
-
+ 
     inf.close();
 
     //calculate each point's gaussian value
@@ -203,16 +256,15 @@ int main(int argc, char *argv[])
 
     ROS_INFO("old lengh %d", human_list.size());
     ROS_INFO("new lengh %d", new_human_list.size());
-
-
     while(ros::ok())
     {
         pose_pub_marker.publish(poseMarker);
         new_pose_pub_marker.publish(newPoseMarker);
+        robot_pose_pub_marker.publish(robotPoseMarker);
         ros::spinOnce();
         loop_rate.sleep();
     }
     ros::spin();
-
+     
     return 0;
 } 
