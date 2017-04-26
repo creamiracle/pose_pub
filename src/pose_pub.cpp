@@ -16,7 +16,13 @@ typedef struct human_position
     double sec;
     double nsec;
     double gaussian;
+    int clusterNo;
 }human;
+
+typedef struct Point{
+    double x;
+    double y;
+};
 
 typedef struct map_grid
 {
@@ -27,19 +33,119 @@ typedef struct map_grid
 visualization_msgs::MarkerArray poseMarker;
 visualization_msgs::MarkerArray newPoseMarker;
 visualization_msgs::MarkerArray robotPoseMarker;
+visualization_msgs::MarkerArray clusterMarker;
+
 
 nav_msgs::OccupancyGrid map;
 
 std::vector<human> human_list;
 std::vector<human> new_human_list;
 std::vector<geometry_msgs::Pose> robotPose;
+std::vector<Point> points;
 
 int count = 0;
 int count_ = 0;
 int count1 = 0;
+int clusterCount = 0;
 int map_width = 0;
 int map_height = 0;
 float map_resolution = 0.0;
+
+static const inline double distance(double x1, double y1, double x2, double y2)
+{
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+    
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+const inline int region_query(const std::vector<Point> &input, int p, std::vector<int> &output, double eps)
+{
+    for(int i = 0; i < (int)input.size(); i++){
+        
+        if(distance(input[i].x, input[i].y, input[p].x, input[p].y) < eps){
+            output.push_back(i);
+        }
+    }
+    
+    return output.size();
+}
+
+bool expand_cluster(const std::vector<Point> &input, int p, std::vector<int> &output, int cluster, double eps, int min)
+{
+    std::vector<int> seeds;
+    
+    if(region_query(input, p, seeds, eps) < min){
+        
+        //this point is noise
+        output[p] = -1;
+        return false;
+        
+    }else{
+        
+        //set cluster id
+        for(int i = 0; i < (int)seeds.size(); i++){
+            output[seeds[i]] = cluster;
+        }
+        
+        //delete paint from seeds
+        seeds.erase(std::remove(seeds.begin(), seeds.end(), p), seeds.end());
+        
+        //seed -> empty
+        while((int)seeds.size() > 0){
+            
+            int cp = seeds.front();
+            std::vector<int> result;
+            
+            if(region_query(input, cp, result, eps) >= min){
+                
+                for(int i = 0; i < (int)result.size(); i++){
+                    
+                    int rp = result[i];
+                    
+                    //this paint is noise or unmarked point
+                    if(output[rp] < 1){
+                        
+                        //unmarked point
+                        if(!output[rp]){
+                            seeds.push_back(rp);
+                        }
+                        
+                        //set cluster id
+                        output[rp] = cluster;
+                    }
+                }
+            }
+            
+            //delete point from seeds
+            seeds.erase(std::remove(seeds.begin(), seeds.end(), cp), seeds.end());
+        }
+    }
+    
+    return true;
+}
+
+int dbscan(const std::vector<Point> &input, std::vector<int> &labels, double eps, int min)
+{
+    int size = input.size();
+    int cluster = 1;
+    
+    std::vector<int> state(size);
+    
+    for(int i = 0; i < size; i++){
+        
+        if(!state[i]){
+            
+            if(expand_cluster(input, i, state, cluster, eps, min)){
+                cluster++;
+            }
+        }
+    }
+    
+    labels = state;
+    
+    return cluster - 1;
+}
 
 //calculate gaussian value
 double gaussian2D(double x, double xc, double y, double yc, double sigma)
@@ -48,27 +154,6 @@ double gaussian2D(double x, double xc, double y, double yc, double sigma)
     return std::exp(-exponent);
 }
 
-//make marker array 
-void makeMarkerArray(double x, double y, int count, double g, double b, visualization_msgs::MarkerArray markerArray)
-{
-    visualization_msgs::Marker aMarker;
-    aMarker.header.frame_id = "/map";
-    aMarker.header.stamp = ros::Time::now();  
-    aMarker.type = aMarker.CUBE;
-    aMarker.pose.position.x = x;
-    aMarker.pose.position.y = y;
-    aMarker.pose.position.z = 0;
-    aMarker.scale.x = 0.05;
-    aMarker.scale.y = 0.05;
-    aMarker.scale.z = 0.05;
-    aMarker.color.a = 1;
-    aMarker.color.g = g;
-    aMarker.color.b = b;
-    aMarker.id = count;
-    aMarker.ns = "sector";
-    count++;
-    markerArray.markers.push_back(aMarker);
-}
 
 //calculate each point's gaussian value.
 void calGaussian()
@@ -85,6 +170,28 @@ void calGaussian()
     }
 }
 
+void genMarker(double x, double y, double r, double g, double b)
+{
+    visualization_msgs::Marker aMarker;
+    aMarker.header.frame_id = "/map";
+    aMarker.header.stamp = ros::Time::now();  
+    aMarker.type = aMarker.CUBE;
+    aMarker.scale.x = 0.05;
+    aMarker.scale.y = 0.05;
+    aMarker.scale.z = 0.05;
+    aMarker.color.a = 1;
+    aMarker.color.r = r;
+    aMarker.color.g = g;
+    aMarker.color.b = b;
+    aMarker.id = clusterCount;
+    aMarker.ns = "sector";
+    aMarker.pose.position.x = x;
+    aMarker.pose.position.y = y;
+    aMarker.pose.position.z = 0;
+    clusterCount++;
+    clusterMarker.markers.push_back(aMarker);
+}
+
 //filter the points, if smaller than remove.
 void filter(std::vector<human> human_list)
 {
@@ -95,11 +202,21 @@ void filter(std::vector<human> human_list)
         if(human_list[i].gaussian >= biggest_gaussian)
             biggest_gaussian = human_list[i].gaussian;
     }
+    ROS_INFO("biggest is %f",biggest_gaussian);
     for (int i = 0; i < length; ++i)
     {
-        if(human_list[i].gaussian > 0.4 * biggest_gaussian)
+        if(human_list[i].gaussian > 0.3 * biggest_gaussian)
         {
+            //save in human list
             new_human_list.push_back(human_list[i]);
+
+            //save in point for dbscan
+            Point newPoint;
+            newPoint.x = human_list[i].x;
+            newPoint.y = human_list[i].y;
+            points.push_back(newPoint);
+            //ROS_INFO("points number %d", points.size());
+
             visualization_msgs::Marker aMarker;
             aMarker.header.frame_id = "/map";
             aMarker.header.stamp = ros::Time::now();  
@@ -118,8 +235,6 @@ void filter(std::vector<human> human_list)
             newPoseMarker.markers.push_back(aMarker);
         }
     }
-
-
 }
 
 void poseCallBack(const geometry_msgs::PoseConstPtr &msg)
@@ -159,7 +274,7 @@ int main(int argc, char *argv[])
     ros::NodeHandle n;
     ros::Rate loop_rate(10);
     ros::Subscriber map_sub = n.subscribe("/map",1,mapCallBack);
-    ros::Subscriber pose_sub = n.subscribe("/robot_pose",1,poseCallBack);
+    //ros::Subscriber pose_sub = n.subscribe("/robot_pose",1,poseCallBack);
     ros::Publisher pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/human_position", 1);
     ros::Publisher new_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/new_human_position", 1);
     ros::Publisher robot_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/robot_position", 1);
@@ -167,7 +282,7 @@ int main(int argc, char *argv[])
     //read txt file and get the data.
     std::ifstream inf;
     std::string line;
-    inf.open("/home/lin/catkin_ws/src/detect_human/result/testposition.txt", std::ifstream::in);
+    inf.open("/home/lin/catkin_ws/src/detect_human/result/resultfeb.txt", std::ifstream::in);
     
     int j = 0;
     size_t comma = 0;
@@ -256,11 +371,35 @@ int main(int argc, char *argv[])
 
     ROS_INFO("old lengh %d", human_list.size());
     ROS_INFO("new lengh %d", new_human_list.size());
+
+    //each label match a point
+    std::vector<int> labels;
+
+    //dbscan
+    int clusterNum = dbscan(points, labels, 0.4, 3);
+    ROS_INFO("number of cluster is %d", clusterNum);
+
+    //give labels to each point in new_human_list
+    for (int i = 0; i < labels.size(); ++i)
+    {
+        new_human_list[i].clusterNo = labels[i];
+        //ROS_INFO("point %d is %f %f, label is %d", i,new_human_list[i].x,new_human_list[i].y, new_human_list[i].clusterNo);
+        if(labels[i] == -1)
+        {
+            genMarker(new_human_list[i].x,new_human_list[i].y, 1, 1, 0);
+            //ROS_INFO("point %d is %f %f, label is %d", i,new_human_list[i].x,new_human_list[i].y, new_human_list[i].clusterNo);
+        }
+        else
+        {
+            genMarker(new_human_list[i].x,new_human_list[i].y, 0.1* labels[i], 0.2* labels[i], 0.1* labels[i]);
+        }
+    }
+
     while(ros::ok())
     {
         pose_pub_marker.publish(poseMarker);
         new_pose_pub_marker.publish(newPoseMarker);
-        robot_pose_pub_marker.publish(robotPoseMarker);
+        robot_pose_pub_marker.publish(clusterMarker);
         ros::spinOnce();
         loop_rate.sleep();
     }
