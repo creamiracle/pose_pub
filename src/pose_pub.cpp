@@ -277,12 +277,12 @@ int main(int argc, char *argv[])
     //ros::Subscriber pose_sub = n.subscribe("/robot_pose",1,poseCallBack);
     ros::Publisher pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/human_position", 1);
     ros::Publisher new_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/new_human_position", 1);
-    ros::Publisher robot_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/robot_position", 1);
+    ros::Publisher cluster_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/cluster_position", 1);
 
     //read txt file and get the data.
     std::ifstream inf;
     std::string line;
-    inf.open("/home/lin/catkin_ws/src/detect_human/result/resultfeb.txt", std::ifstream::in);
+    inf.open("/home/rossie1/catkin_ws/src/detect_human/result/newposition.txt", std::ifstream::in);
     
     int j = 0;
     size_t comma = 0;
@@ -399,7 +399,7 @@ int main(int argc, char *argv[])
     {
         pose_pub_marker.publish(poseMarker);
         new_pose_pub_marker.publish(newPoseMarker);
-        robot_pose_pub_marker.publish(clusterMarker);
+        cluster_pose_pub_marker.publish(clusterMarker);
         ros::spinOnce();
         loop_rate.sleep();
     }
