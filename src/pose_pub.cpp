@@ -34,6 +34,7 @@ visualization_msgs::MarkerArray poseMarker;
 visualization_msgs::MarkerArray newPoseMarker;
 visualization_msgs::MarkerArray robotPoseMarker;
 visualization_msgs::MarkerArray clusterMarker;
+visualization_msgs::MarkerArray lineMarker;
 
 
 nav_msgs::OccupancyGrid map;
@@ -50,6 +51,58 @@ int clusterCount = 0;
 int map_width = 0;
 int map_height = 0;
 float map_resolution = 0.0;
+
+double findBiggestX(std::vector<human> templateVec)
+{
+    double biggestX = templateVec[1].x;
+    for(int i = 0 ; i < templateVec.size(); i++)
+    {
+        if (biggestX < templateVec[i].x)
+        {
+            biggestX = templateVec[i].x;
+        }
+    }
+    return biggestX;
+}
+
+double findBiggestY(std::vector<human> templateVec)
+{
+    double biggestY =  templateVec[1].y;
+    for(int i = 0 ; i < templateVec.size(); i++)
+    {
+        if (biggestY < templateVec[i].y)
+        {
+            biggestY = templateVec[i].y;
+        }
+    }
+    return biggestY;
+}
+
+double findSmallestX(std::vector<human> templateVec)
+{
+    double smallestX =  templateVec[1].x;
+    for(int i = 0 ; i < templateVec.size(); i++)
+    {
+        if (smallestX > templateVec[i].x)
+        {
+            smallestX = templateVec[i].x;
+        }
+    }
+    return smallestX;
+}
+
+double findSmallestY(std::vector<human> templateVec)
+{
+    double smallestY =  templateVec[1].y;
+    for(int i = 0 ; i < templateVec.size(); i++)
+    {
+        if (smallestY > templateVec[i].y)
+        {
+            smallestY = templateVec[i].y;
+        }
+    }
+    return smallestY;
+}
 
 static const inline double distance(double x1, double y1, double x2, double y2)
 {
@@ -277,12 +330,13 @@ int main(int argc, char *argv[])
     //ros::Subscriber pose_sub = n.subscribe("/robot_pose",1,poseCallBack);
     ros::Publisher pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/human_position", 1);
     ros::Publisher new_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/new_human_position", 1);
-    ros::Publisher cluster_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/cluster_position", 1);
+    ros::Publisher cluster_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/cluster_position", 1);
+    ros::Publisher region_pub_marker = n.advertise<visualization_msgs::Marker>("/region_boundary", 1);
 
     //read txt file and get the data.
     std::ifstream inf;
     std::string line;
-    inf.open("/home/rossie1/catkin_ws/src/detect_human/result/newposition.txt", std::ifstream::in);
+    inf.open("/home/lin/catkin_ws/src/detect_human/result/testposition.txt", std::ifstream::in);
     
     int j = 0;
     size_t comma = 0;
@@ -377,7 +431,7 @@ int main(int argc, char *argv[])
 
     //dbscan
     int clusterNum = dbscan(points, labels, 0.4, 3);
-    ROS_INFO("number of cluster is %d", clusterNum);
+    //ROS_INFO("number of cluster is %d", clusterNum);
 
     //give labels to each point in new_human_list
     for (int i = 0; i < labels.size(); ++i)
@@ -393,13 +447,81 @@ int main(int argc, char *argv[])
         {
             genMarker(new_human_list[i].x,new_human_list[i].y, 0.1* labels[i], 0.2* labels[i], 0.1* labels[i]);
         }
-    }
+    }   
+    //ROS_INFO("%f,%f",new_human_list[1].x,new_human_list[1].y);
 
     while(ros::ok())
     {
         pose_pub_marker.publish(poseMarker);
         new_pose_pub_marker.publish(newPoseMarker);
-        cluster_pose_pub_marker.publish(clusterMarker);
+        cluster_pub_marker.publish(clusterMarker);
+        //region_pub_marker.publish(lineMarker);
+        int line_counter = 1;
+        for (int i = 1; i <= clusterNum; ++i)
+        {
+            
+            //ROS_INFO("cluster no %d",i);
+            //ROS_INFO("cluster no %d",line_counter);
+            visualization_msgs::Marker line_strip;
+            line_strip.header.frame_id = "/map";
+            line_strip.header.stamp = ros::Time::now();
+            line_strip.ns = "points_and_lines";
+            line_strip.action = visualization_msgs::Marker::ADD;
+            line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+            line_strip.scale.x = 0.1;
+            line_strip.color.b = 1.0;
+            line_strip.color.a = 1.0;
+            line_strip.id = line_counter;
+
+            std::vector<human> templateVec;
+
+            for(int j = 0; j < new_human_list.size(); j++)
+            {
+                if(new_human_list[j].clusterNo == i)
+                {
+                        //find all the point with same cluster No
+                    templateVec.push_back(new_human_list[j]);
+                }
+            }
+            //ROS_INFO("tme size %d", templateVec.size());
+            double biggestX = findBiggestX(templateVec);  
+            double biggestY = findBiggestY(templateVec);
+            double smallestX = findSmallestX(templateVec);
+            double smallestY = findSmallestY(templateVec);
+            //ROS_INFO("bigx : %f, bigy : %f, smax : %f , smay : %f",biggestX,biggestY,smallestX,smallestY);
+            geometry_msgs::Point p1;
+            geometry_msgs::Point p2;
+            geometry_msgs::Point p3;
+            geometry_msgs::Point p4;
+
+            p1.x = smallestX;
+            p1.y = smallestY;
+            p1.z = 0;
+            line_strip.points.push_back(p1);
+
+            p3.x = biggestX;
+            p3.y = smallestY;
+            p3.z = 0;
+            line_strip.points.push_back(p3);
+
+            p4.x = biggestX;
+            p4.y = biggestY;
+            p4.z = 0;
+            line_strip.points.push_back(p4);
+        
+            p2.x = smallestX;
+            p2.y = biggestY;
+            p2.z = 0;
+            line_strip.points.push_back(p2);
+
+
+            line_strip.points.push_back(p1);
+
+            region_pub_marker.publish(line_strip);
+            line_counter++;
+
+        }
+
         ros::spinOnce();
         loop_rate.sleep();
     }
