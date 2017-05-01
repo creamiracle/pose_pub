@@ -52,6 +52,7 @@ int clusterCount = 0;
 int map_width = 0;
 int map_height = 0;
 float map_resolution = 0.0;
+double threshold = 0.2;
 
 double findBiggestX(std::vector<human> templateVec)
 {
@@ -224,6 +225,29 @@ void calGaussian()
     }
 }
 
+visualization_msgs::Marker genTextMarker(double x, double y, int id, int markerid)
+{
+    visualization_msgs::Marker aMarker;
+    aMarker.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    std::stringstream ss;
+    ss<<"Cluster "<<id;
+    aMarker.text = ss.str().data();
+    aMarker.id = markerid;
+    aMarker.header.frame_id = "/map";
+    aMarker.header.stamp = ros::Time::now();  
+    aMarker.pose.position.x = x;
+    aMarker.pose.position.y = y;
+    aMarker.pose.position.z = 0.5;
+    aMarker.scale.x = 0.25;
+    aMarker.scale.y = 0.25;
+    aMarker.scale.z = 0.25;
+    aMarker.color.a = 1;
+    aMarker.color.r = 1.0;
+    aMarker.color.g = 0.0;
+    aMarker.color.b = 0.0;
+    return aMarker;
+}
+
 void genMarker(double x, double y, double r, double g, double b)
 {
     visualization_msgs::Marker aMarker;
@@ -259,7 +283,7 @@ void filter(std::vector<human> human_list)
     ROS_INFO("biggest is %f",biggest_gaussian);
     for (int i = 0; i < length; ++i)
     {
-        if(human_list[i].gaussian > 0.15 * biggest_gaussian)
+        if(human_list[i].gaussian > threshold * biggest_gaussian)
         {
             //save in human list
             human_list[i].old_index = i;
@@ -334,11 +358,12 @@ int main(int argc, char *argv[])
     ros::Publisher new_pose_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/new_human_position", 1);
     ros::Publisher cluster_pub_marker = n.advertise<visualization_msgs::MarkerArray>("/cluster_position", 1);
     ros::Publisher region_pub_marker = n.advertise<visualization_msgs::Marker>("/region_boundary", 1);
+    ros::Publisher text_pub_marker = n.advertise<visualization_msgs::Marker>("/region_boundary_text", 1);
 
     //read txt file and get the data.
     std::ifstream inf;
     std::string line;
-    inf.open("/home/lin/catkin_ws/src/detect_human/result/position.txt", std::ifstream::in);
+    inf.open("/home/lin/catkin_ws/src/detect_human/result/result20131114.txt", std::ifstream::in);
     
     int j = 0;
     size_t comma = 0;
@@ -449,7 +474,9 @@ int main(int argc, char *argv[])
         {
             genMarker(new_human_list[i].x,new_human_list[i].y, 0.1* labels[i], 0.2* labels[i], 0.1* labels[i]);
         }
-    }   
+    } 
+    std::ofstream outfile("/home/lin/catkin_ws/src/pose_pub/result/result20131114.txt");
+  
     //ROS_INFO("%f,%f",new_human_list[1].x,new_human_list[1].y);
     for (int j = 1; j <= clusterNum; ++j)
     {
@@ -457,7 +484,7 @@ int main(int argc, char *argv[])
         {
            if(new_human_list[i].clusterNo == j)
            {
-                std::ofstream outfile("/home/lin/catkin_ws/src/pose_pub/result/result1.txt", std::ios_base::app);
+                std::ofstream outfile("/home/lin/catkin_ws/src/pose_pub/result/result20131114.txt", std::ios_base::app);
                 if(!outfile)
                 {
                   std::cout<<"error";
@@ -538,7 +565,11 @@ int main(int argc, char *argv[])
 
             line_strip.points.push_back(p1);
 
+            double midX = biggestX - (biggestX - smallestX) / 2;
+            double midY = biggestY - (biggestY - smallestY) / 2;
+            visualization_msgs::Marker marker =  genTextMarker(midX, midY, i, line_counter);
             region_pub_marker.publish(line_strip);
+            text_pub_marker.publish(marker);
             line_counter++;
 
         }
