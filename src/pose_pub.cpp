@@ -17,6 +17,7 @@ typedef struct human_position
     double nsec;
     double gaussian;
     int clusterNo;
+    int old_index;
 }human;
 
 typedef struct Point{
@@ -258,9 +259,10 @@ void filter(std::vector<human> human_list)
     ROS_INFO("biggest is %f",biggest_gaussian);
     for (int i = 0; i < length; ++i)
     {
-        if(human_list[i].gaussian > 0.3 * biggest_gaussian)
+        if(human_list[i].gaussian > 0.15 * biggest_gaussian)
         {
             //save in human list
+            human_list[i].old_index = i;
             new_human_list.push_back(human_list[i]);
 
             //save in point for dbscan
@@ -336,7 +338,7 @@ int main(int argc, char *argv[])
     //read txt file and get the data.
     std::ifstream inf;
     std::string line;
-    inf.open("/home/lin/catkin_ws/src/detect_human/result/testposition.txt", std::ifstream::in);
+    inf.open("/home/lin/catkin_ws/src/detect_human/result/position.txt", std::ifstream::in);
     
     int j = 0;
     size_t comma = 0;
@@ -431,7 +433,7 @@ int main(int argc, char *argv[])
 
     //dbscan
     int clusterNum = dbscan(points, labels, 0.4, 3);
-    //ROS_INFO("number of cluster is %d", clusterNum);
+    ROS_INFO("number of cluster is %d", clusterNum);
 
     //give labels to each point in new_human_list
     for (int i = 0; i < labels.size(); ++i)
@@ -449,7 +451,26 @@ int main(int argc, char *argv[])
         }
     }   
     //ROS_INFO("%f,%f",new_human_list[1].x,new_human_list[1].y);
+    for (int j = 1; j <= clusterNum; ++j)
+    {
+        for (int i = 0; i < new_human_list.size(); ++i)
+        {
+           if(new_human_list[i].clusterNo == j)
+           {
+                std::ofstream outfile("/home/lin/catkin_ws/src/pose_pub/result/result1.txt", std::ios_base::app);
+                if(!outfile)
+                {
+                  std::cout<<"error";
+                }
+                else
+                {
+                  outfile <<"corrdinate is " << new_human_list[i].x << "," << new_human_list[i].y << "," << " cluster No " << new_human_list[i].clusterNo << " , image No is " << new_human_list[i].old_index << std::endl;
+                }
+            }
+        }
 
+    }
+    
     while(ros::ok())
     {
         pose_pub_marker.publish(poseMarker);
