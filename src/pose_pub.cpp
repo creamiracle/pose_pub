@@ -52,7 +52,7 @@ int clusterCount = 0;
 int map_width = 0;
 int map_height = 0;
 float map_resolution = 0.0;
-double threshold = 0.2;
+double threshold = 0.325;
 
 double findBiggestX(std::vector<human> templateVec)
 {
@@ -363,7 +363,7 @@ int main(int argc, char *argv[])
     //read txt file and get the data.
     std::ifstream inf;
     std::string line;
-    inf.open("/home/lin/catkin_ws/src/detect_human/result/result20131114.txt", std::ifstream::in);
+    inf.open("/home/lin/catkin_ws/src/detect_human/result/positions.txt", std::ifstream::in);
     
     int j = 0;
     size_t comma = 0;
@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
 
         getline(inf,line);
         //get x
-        comma = line.find(',',0);
+        comma = line.find(' ',0);
         double comma_ = std::atof(line.substr(0,comma).c_str());
         x = comma_;
         newHuman.x = comma_;
@@ -401,7 +401,7 @@ int main(int argc, char *argv[])
         //get y 
         while (comma < line.size() && j == 0)
         {
-            comma1 = line.find(',',comma + 1);
+            comma1 = line.find(' ',comma + 1);
             double comma1_ = std::atof(line.substr(comma + 1,comma1-comma-1).c_str());
             y = comma1_;
             aMarker.pose.position.y = comma1_;
@@ -412,30 +412,31 @@ int main(int argc, char *argv[])
         //get z
         while (comma < line.size() && j == 1)
         {
-            comma2 = line.find(',',comma + 1);
+            comma2 = line.find(' ',comma + 1);
             double comma2_ = std::atof(line.substr(comma + 1,comma2-comma-1).c_str());
             aMarker.pose.position.z = 0;
             ++j;
             comma = comma2;
         }
-        //get sec
-        while (comma < line.size() && j == 2)
-        {
-            comma3 = line.find(',',comma + 1);
-            double comma3_ = std::atof(line.substr(comma + 1,comma3-comma-1).c_str());
-            newHuman.sec = comma3_;
-            ++j;
-            comma = comma3;
-        }
-        //get nsec
-        while (comma < line.size() && j == 3)
-        {
-            comma4 = line.find(',',comma + 1);
-            double comma4_ = std::atof(line.substr(comma + 1,comma4-comma-1).c_str());
-            newHuman.nsec = comma4_;
-            ++j;
-            comma = comma4;
-        }
+        // //get sec
+        // while (comma < line.size() && j == 2)
+        // {
+        //     comma3 = line.find(' ',comma + 1);
+        //     double comma3_ = std::atof(line.substr(comma + 1,comma3-comma-1).c_str());
+        //     newHuman.sec = comma3_;
+        //     ++j;
+        //     comma = comma3;
+        // }
+        // //get nsec
+        // while (comma < line.size() && j == 3)
+        // {
+        //     comma4 = line.find(' ',comma + 1);
+        //     double comma4_ = std::atof(line.substr(comma + 1,comma4-comma-1).c_str());
+        //     newHuman.nsec = comma4_;
+        //     ++j;
+        //     comma = comma4;
+        // }
+        //ROS_INFO("get postion %f, %f",newHuman.x, newHuman.y);
         j = 0;
         count++;
         newHuman.gaussian = 0.0;
